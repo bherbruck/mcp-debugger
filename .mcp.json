@@ -2,7 +2,7 @@
   "mcpServers": {
     "mcp-debugger": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/index.js"],
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/bundle.js"],
       "env": {
         "NODE_ENV": "production"
       }
