@@ -1,140 +1,163 @@
 # MCP Debugger
 
-A multi-language debugging plugin for Claude Code using the Debug Adapter Protocol (DAP). Debug JavaScript/TypeScript, Python, Go, and Rust with real breakpoints, stepping, and variable inspection.
+**A Claude Code plugin that lets coding agents pause running programs, step through execution, and inspect expanded local variables via real debuggers — fully autonomous, no log statements required.**
 
-## Features
+This is a **game changer** for AI-assisted development. Claude decides when to debug, sets breakpoints, and inspects state without modifying your code. It works today.
 
-- **Real Debugging**: Uses actual debuggers (debugpy, vscode-js-debug, Delve, CodeLLDB)
-- **Multi-Language**: Python, JavaScript/TypeScript, Go, and Rust
-- **Auto-Install**: Debug adapters are automatically installed on first use
-- **Full Control**: Breakpoints, stepping (in/over/out), continue, pause
-- **Variable Inspection**: View variables, expand objects, evaluate expressions
-- **Stack Traces**: Full call stack navigation
+## Why This Exists
+
+Traditional AI debugging means:
+- Stop execution
+- Edit code to add debug logs
+- Adjust log levels
+- Rerun the program
+- Parse log spam
+- Repeat
+
+**This wastes tokens, time, and iteration cycles.**
+
+**MCP Debugger eliminates all of that.**
+
+No debug logs. No log levels. No reruns. No code edits. Claude pauses your running program, inspects the actual state, and tells you what's wrong — in one shot.
+
+**Result**: Faster debugging, fewer tokens spent on log spam, and no polluted git diffs from print statements.
+
+## What Makes This Different
+
+- ✓ **Agent-Driven**: Claude decides when to set breakpoints and inspect variables — you just ask questions
+- ✓ **Real DAP Backends**: Uses production debuggers (debugpy, vscode-js-debug, Delve, CodeLLDB), not mocks or interpreters
+- ✓ **Expanded Locals**: Inspects full object trees, not just stack frames
+- ✓ **Multi-Language**: Same debugging mental model across Python, JavaScript/TypeScript, Go, and Rust
+
+This isn't "AI explains stack traces" or "print-debugging helpers" — it's **autonomous runtime inspection**.
+
+**This fundamentally changes how agents debug code.**
+
+## Language Support
+
+Fully functional with real debugger backends:
+
+- **Python** — debugpy
+- **JavaScript / TypeScript** — vscode-js-debug
+- **Go** — Delve
+- **Rust** — CodeLLDB
+
+Debug adapters auto-install on first use.
+
+## How It Works
+
+```
+Claude Code → MCP Protocol → mcp-debugger → DAP → Runtime Debugger
+                                                    ↓
+                                              Your Program (paused)
+```
+
+1. You ask Claude a question about your code's behavior
+2. Claude decides to debug instead of guessing
+3. Breakpoints are set, program runs
+4. Claude inspects locals and stack on-demand
+5. You get answers based on actual runtime state
+
+No user commands required — Claude invokes debugging tools automatically when needed.
 
 ## Installation
 
-### As a Claude Code Plugin
+In Claude Code:
 
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/mcp-debugger.git
-cd mcp-debugger
+1. Use `/plugin` to open the plugin manager
+2. Add the registry: `bherbruck/mcp-debugger`
+3. Install the `mcp-debugger` plugin
 
-# Install dependencies and build
-npm install
-npm run build
+That's it. Claude uses it automatically when debugging would help.
 
-# Use with Claude Code
-claude --plugin-dir /path/to/mcp-debugger
+**Optional**: Add to your `CLAUDE.md` to make Claude prefer debugging over print statements:
+
+```markdown
+## Debugging
+
+Use the mcp-debugger plugin for debugging instead of adding print/log statements.
+Set breakpoints and inspect variables using real debuggers.
 ```
 
-### Requirements
+**Requirements**: Language runtimes for what you want to debug (Python 3.7+, Node.js 18+, Go 1.18+, Rust). Debug adapters install automatically on first use.
 
-- Node.js 18+
-- Language runtimes for the languages you want to debug:
-  - **Python**: Python 3.7+ (debugpy will be auto-installed)
-  - **JavaScript/TypeScript**: Node.js 18+
-  - **Go**: Go 1.18+ (Delve will be auto-installed)
-  - **Rust**: Rust/Cargo (CodeLLDB will be auto-installed)
+## Concrete Example
 
-## Usage
+**You**: "Why is `process_orders()` returning None sometimes?"
 
-### Commands
-
-- `/mcp-debugger:debug <file>` - Start debugging a file
-- `/mcp-debugger:breakpoint add|remove|list` - Manage breakpoints
-- `/mcp-debugger:step in|over|out` - Step through code
-
-### MCP Tools
-
-The plugin exposes these tools:
-
-#### Session Management
-- `create_debug_session` - Create a debug session for a language
-- `start_debugging` - Start debugging a script
-- `terminate_session` - End a debug session
-- `list_sessions` - List active sessions
-
-#### Breakpoints
-- `set_breakpoint` - Set a breakpoint at a line
-- `remove_breakpoint` - Remove a breakpoint
-- `list_breakpoints` - List all breakpoints
-
-#### Execution Control
-- `continue` - Continue execution
-- `pause` - Pause execution
-- `step_in` - Step into a function
-- `step_over` - Step over to next line
-- `step_out` - Step out of current function
-
-#### Inspection
-- `get_stack_trace` - Get the call stack
-- `get_variables` - Get variables in scope
-- `expand_variable` - Expand a complex variable
-- `evaluate_expression` - Evaluate an expression
-- `get_source_context` - Get source code around current location
-
-## Example Session
+**Claude** (thinking): *Instead of asking the user to add print statements, I'll set a breakpoint and inspect the actual state.*
 
 ```
-User: Debug this Python script and check what happens at line 15
+[Claude creates debug session, sets breakpoint at process_orders(), runs code]
 
-Claude: I'll create a debug session and set a breakpoint at line 15.
+Paused at line 47 in process_orders()
 
-[Creates session, sets breakpoint, starts debugging]
+Stack frame:
+  process_orders() → validate_items() → calculate_total()
 
-The program has stopped at line 15. Here's the current state:
+Expanded locals at breakpoint:
+  orders = [
+    Order(id=1, items=[...], total=150.00, status='pending'),
+    Order(id=2, items=[], total=0.00, status='pending'),  ← suspicious
+    Order(id=3, items=[...], total=200.00, status='pending')
+  ]
+  valid_orders = []
 
-Source context:
-  13 |     for item in items:
-  14 |         total += item.value
-> 15 |         if total > 100:
-  16 |             break
+[Claude steps into validate_items(), inspects]
 
-Local variables:
-- items: [<Item>, <Item>, <Item>] (3 items)
-- total: 87
-- item: <Item object at 0x...>
+Found it: Order #2 has an empty items list. The function returns None
+when items is empty instead of raising an exception or returning an
+empty result.
 
-The loop is processing items and total is currently 87.
-Would you like me to step to the next line or continue?
+The bug is in line 52 — it returns early without a value when
+len(order.items) == 0.
 ```
 
-## Development
+**Claude knows this without you adding a single log statement.** It paused execution, expanded the `orders` list, and inspected the invariant break in real time.
 
-```bash
-# Install dependencies
-npm install
+## Who This Is For
 
-# Build
-npm run build
+- **Autonomous coding agents** that need to debug without human hand-holding
+- **Humans supervising agents** who want Claude to investigate issues independently
+- **Anyone tired of debug logs** and the stop-edit-log-rerun loop
 
-# Run tests
-npm test
+This is agent-first debugging. You ask questions, Claude debugs.
 
-# Watch mode
-npm run dev
-```
+## Scope & Safety
 
-## Architecture
+**Intended for**: Local development and debugging environments
+**Not intended for**: Production runtime debugging (yet)
+**Agent capabilities**: Inspect state, set breakpoints, evaluate expressions
+**Agent limitations**: Cannot modify code through the debugger
 
-```
-src/
-├── index.ts              # Entry point
-├── server.ts             # MCP server with tool definitions
-├── dap/
-│   ├── dap-client.ts     # DAP protocol client
-│   └── message-parser.ts # Content-Length message parser
-├── session/
-│   ├── types.ts          # Type definitions
-│   └── session-manager.ts # Session lifecycle management
-└── adapters/
-    ├── adapter-registry.ts # Adapter factory
-    ├── python/            # Python (debugpy)
-    ├── javascript/        # JS/TS (vscode-js-debug)
-    ├── go/                # Go (Delve)
-    └── rust/              # Rust (CodeLLDB)
-```
+MCP Debugger gives agents read-only runtime inspection. It's designed for dev environments where pausing execution is safe.
+
+**Known limitations**: Rust multithreaded debugging behaves like a regular VS Code debugger — cross-thread symbol resolution can be limited. This is a CodeLLDB/DAP limitation, not specific to MCP Debugger.
+
+## Available Tools
+
+Claude has access to these debugging capabilities (invoked automatically):
+
+**Session Management**: `create_debug_session`, `start_debugging`, `terminate_session`, `list_sessions`
+**Breakpoints**: `set_breakpoint`, `remove_breakpoint`, `list_breakpoints`
+**Execution Control**: `continue`, `pause`, `step_in`, `step_over`, `step_out`
+**Inspection**: `get_stack_trace`, `get_variables`, `expand_variable`, `evaluate_expression`, `get_source_context`
+
+You don't call these directly — Claude chooses when to use them.
+
+## Development & Architecture
+
+**Build**: `npm install && npm run build`
+**Test**: `npm test`
+**Watch**: `npm run dev`
+
+Architecture layers:
+1. **MCP Server** (`src/server.ts`) — Routes tool calls from Claude Code to handlers
+2. **Session Manager** (`src/session/`) — Manages debug session lifecycle and state machine
+3. **DAP Client** (`src/dap/`) — Implements Debug Adapter Protocol, handles message parsing
+4. **Adapters** (`src/adapters/`) — Language-specific debugger implementations (Python, JS/TS, Go, Rust)
+
+See [CLAUDE.md](CLAUDE.md) for detailed architecture notes.
 
 ## License
 
