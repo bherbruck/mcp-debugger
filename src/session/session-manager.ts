@@ -209,6 +209,12 @@ export class SessionManager extends EventEmitter {
     client.on('terminated', () => {
       this.updateState(sessionId, SessionState.TERMINATED);
       this.emit('sessionTerminated', sessionId);
+      // Auto-cleanup terminated sessions after a short delay
+      setTimeout(() => {
+        if (this.sessions.get(sessionId)?.info.state === SessionState.TERMINATED) {
+          this.sessions.delete(sessionId);
+        }
+      }, 5000);
     });
 
     client.on('output', (event: DebugProtocol.OutputEvent) => {
@@ -226,6 +232,12 @@ export class SessionManager extends EventEmitter {
       if (this.sessions.has(sessionId)) {
         this.updateState(sessionId, SessionState.TERMINATED);
         this.emit('sessionTerminated', sessionId);
+        // Auto-cleanup after adapter exit
+        setTimeout(() => {
+          if (this.sessions.get(sessionId)?.info.state === SessionState.TERMINATED) {
+            this.sessions.delete(sessionId);
+          }
+        }, 5000);
       }
     });
 
