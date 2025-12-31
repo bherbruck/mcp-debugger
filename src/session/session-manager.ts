@@ -42,6 +42,11 @@ interface SessionData {
   breakpoints: Map<string, BreakpointInfo[]>; // file -> breakpoints
   currentThreadId: number;
   currentFrameId: number;
+  // Cached context from last stop (for returning with step/continue)
+  lastStopContext?: {
+    stackFrame: StackFrame;
+    variables: Variable[];
+  };
 }
 
 /**
@@ -155,15 +160,29 @@ export class SessionManager extends EventEmitter {
         session.info.stoppedReason = event.body.reason as StopReason;
         session.info.stoppedThreadId = session.currentThreadId;
 
-        // Auto-fetch stack trace to update currentFrameId (like VSCode does)
-        // This prevents "Invalid frame reference" errors in multithreaded apps
+        // Auto-fetch stack trace and variables (like VSCode does on stop)
+        // This prevents "Invalid frame reference" errors and caches context
         try {
           const frames = await client.stackTrace(session.currentThreadId);
           if (frames.length > 0) {
             session.currentFrameId = frames[0].id;
+
+            // Also fetch local variables for the top frame
+            const scopes = await client.scopes(frames[0].id);
+            const localScope = scopes.find(s => s.name.toLowerCase().includes('local'));
+            let variables: Variable[] = [];
+            if (localScope) {
+              variables = await client.variables(localScope.variablesReference);
+            }
+
+            // Cache context for returning with step/continue responses
+            session.lastStopContext = {
+              stackFrame: frames[0],
+              variables
+            };
           }
         } catch {
-          // Ignore errors - frame will be fetched on next getStackTrace call
+          // Ignore errors - will be fetched on next get* call
         }
       }
       this.updateState(sessionId, SessionState.PAUSED);
@@ -512,21 +531,58 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * Wait for session to pause (with timeout)
+   */
+  private waitForPause(sessionId: string, timeoutMs: number = 5000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const session = this.sessions.get(sessionId);
+      if (!session) {
+        reject(new Error('Session not found'));
+        return;
+      }
+
+      // Already paused
+      if (session.info.state === SessionState.PAUSED) {
+        resolve();
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        this.off('stopped', handler);
+        resolve(); // Don't fail, just return without context
+      }, timeoutMs);
+
+      const handler = (stoppedSessionId: string) => {
+        if (stoppedSessionId === sessionId) {
+          clearTimeout(timeout);
+          this.off('stopped', handler);
+          // Small delay to let lastStopContext be populated
+          setTimeout(resolve, 50);
+        }
+      };
+
+      this.on('stopped', handler);
+    });
+  }
+
+  /**
    * Step in
    */
   async stepIn(
     sessionId: string,
     threadId?: number
-  ): Promise<{ success: boolean; state: SessionState; stoppedAt?: StackFrame }> {
+  ): Promise<{ success: boolean; state: SessionState; stoppedAt?: StackFrame; variables?: Variable[] }> {
     const session = this.getSession(sessionId);
     const tid = threadId ?? session.currentThreadId;
 
     try {
       await session.client.stepIn(tid);
-      // The stopped event will update state
+      await this.waitForPause(sessionId);
       return {
         success: true,
-        state: session.info.state
+        state: session.info.state,
+        stoppedAt: session.lastStopContext?.stackFrame,
+        variables: session.lastStopContext?.variables
       };
     } catch (error) {
       return {
@@ -542,15 +598,18 @@ export class SessionManager extends EventEmitter {
   async stepOver(
     sessionId: string,
     threadId?: number
-  ): Promise<{ success: boolean; state: SessionState; stoppedAt?: StackFrame }> {
+  ): Promise<{ success: boolean; state: SessionState; stoppedAt?: StackFrame; variables?: Variable[] }> {
     const session = this.getSession(sessionId);
     const tid = threadId ?? session.currentThreadId;
 
     try {
       await session.client.next(tid);
+      await this.waitForPause(sessionId);
       return {
         success: true,
-        state: session.info.state
+        state: session.info.state,
+        stoppedAt: session.lastStopContext?.stackFrame,
+        variables: session.lastStopContext?.variables
       };
     } catch (error) {
       return {
@@ -566,15 +625,18 @@ export class SessionManager extends EventEmitter {
   async stepOut(
     sessionId: string,
     threadId?: number
-  ): Promise<{ success: boolean; state: SessionState; stoppedAt?: StackFrame }> {
+  ): Promise<{ success: boolean; state: SessionState; stoppedAt?: StackFrame; variables?: Variable[] }> {
     const session = this.getSession(sessionId);
     const tid = threadId ?? session.currentThreadId;
 
     try {
       await session.client.stepOut(tid);
+      await this.waitForPause(sessionId);
       return {
         success: true,
-        state: session.info.state
+        state: session.info.state,
+        stoppedAt: session.lastStopContext?.stackFrame,
+        variables: session.lastStopContext?.variables
       };
     } catch (error) {
       return {
