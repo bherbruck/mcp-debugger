@@ -1,0 +1,45 @@
+{
+  "name": "mcp-debugger",
+  "version": "1.0.0",
+  "description": "Multi-language debugging plugin for Claude Code using Debug Adapter Protocol",
+  "type": "module",
+  "main": "bin/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "start": "node bin/index.js",
+    "clean": "rm -rf bin"
+  },
+  "keywords": [
+    "debugger",
+    "dap",
+    "claude-code",
+    "claude",
+    "agent",
+    "mcp",
+    "debugging",
+    "debug",
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "rust"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@vscode/debugprotocol": "^1.68.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

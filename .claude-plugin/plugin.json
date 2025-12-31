@@ -1,0 +1,35 @@
+{
+  "name": "mcp-debugger",
+  "version": "1.0.0",
+  "description": "Multi-language debugging plugin for Claude Code using Debug Adapter Protocol. Debug JavaScript/TypeScript, Python, Go, and Rust with real breakpoints, stepping, and variable inspection.",
+  "author": {
+    "name": "MCP Debugger Team"
+  },
+  "homepage": "https://github.com/bherbruck/mcp-debugger",
+  "repository": "https://github.com/bherbruck/mcp-debugger",
+  "license": "MIT",
+  "keywords": [
+    "debugger",
+    "dap",
+    "debug-adapter-protocol",
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "rust",
+    "breakpoints",
+    "debugging"
+  ],
+  "commands": [
+    "./commands/debug.md",
+    "./commands/breakpoint.md",
+    "./commands/step.md"
+  ],
+  "agents": [
+    "./agents/debug-assistant.md"
+  ],
+  "skills": [
+    "./skills/debugging-guide.md"
+  ],
+  "mcpServers": "./.mcp.json"
+}
