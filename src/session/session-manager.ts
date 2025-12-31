@@ -495,13 +495,36 @@ export class SessionManager extends EventEmitter {
    */
   async continue(
     sessionId: string,
-    threadId?: number
-  ): Promise<{ success: boolean; state: SessionState; message: string }> {
+    threadId?: number,
+    options?: { waitForBreakpoint?: boolean; timeout?: number }
+  ): Promise<{
+    success: boolean;
+    state: SessionState;
+    message: string;
+    stoppedAt?: StackFrame;
+    variables?: Variable[];
+  }> {
     const session = this.getSession(sessionId);
     const tid = threadId ?? session.currentThreadId;
+    const waitForBreakpoint = options?.waitForBreakpoint ?? false;
+    const timeout = options?.timeout ?? 30000; // 30s default
 
     try {
       await session.client.continue(tid);
+
+      if (waitForBreakpoint) {
+        await this.waitForPause(sessionId, timeout);
+        return {
+          success: true,
+          state: session.info.state,
+          message: session.info.state === SessionState.PAUSED
+            ? 'Hit breakpoint'
+            : 'Execution continued (no breakpoint hit)',
+          stoppedAt: session.lastStopContext?.stackFrame,
+          variables: session.lastStopContext?.variables
+        };
+      }
+
       return {
         success: true,
         state: session.info.state,

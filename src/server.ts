@@ -180,7 +180,7 @@ const tools: Tool[] = [
   // Execution Control
   {
     name: 'continue',
-    description: 'Continue execution until the next breakpoint or program end',
+    description: 'Continue execution until the next breakpoint or program end. Use waitForBreakpoint to block until a breakpoint is hit and return variables.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -191,6 +191,14 @@ const tools: Tool[] = [
         threadId: {
           type: 'number',
           description: 'Optional thread ID (defaults to current thread)'
+        },
+        waitForBreakpoint: {
+          type: 'boolean',
+          description: 'Wait for breakpoint hit and return variables (default: false)'
+        },
+        timeout: {
+          type: 'number',
+          description: 'Timeout in ms when waiting for breakpoint (default: 30000)'
         }
       },
       required: ['sessionId']
@@ -547,7 +555,9 @@ async function handleToolCall(
     case 'continue': {
       const sessionId = args.sessionId as string;
       const threadId = args.threadId as number | undefined;
-      return sessionManager.continue(sessionId, threadId);
+      const waitForBreakpoint = args.waitForBreakpoint as boolean | undefined;
+      const timeout = args.timeout as number | undefined;
+      return sessionManager.continue(sessionId, threadId, { waitForBreakpoint, timeout });
     }
 
     case 'pause': {
