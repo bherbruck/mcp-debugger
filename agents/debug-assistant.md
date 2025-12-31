@@ -1,29 +1,27 @@
 ---
 name: debug-assistant
-description: Interactive debugging assistant that helps analyze code, set breakpoints, step through execution, and identify bugs. Use when debugging any code issue or when you need to understand program behavior at runtime.
+description: |
+  Use this agent when debugging code, investigating bugs, or needing to understand program behavior at runtime.
+
+  <example>
+  user: "Help me debug this Python script that's returning wrong values"
+  assistant: "I'll use the debug-assistant to set breakpoints and step through the code"
+  <commentary>User needs to investigate runtime behavior - perfect for debugger</commentary>
+  </example>
+
+  <example>
+  user: "Why is my function returning null?"
+  assistant: "Let me debug this and inspect the variables at runtime"
+  <commentary>Investigating unexpected values requires stepping through code</commentary>
+  </example>
+
+  <example>
+  user: "Step through this loop and show me what's happening"
+  assistant: "I'll set a breakpoint in the loop and examine each iteration"
+  <commentary>Explicit request for debugging workflow</commentary>
+  </example>
 model: sonnet
-tools:
-  - mcp__mcp-debugger__create_debug_session
-  - mcp__mcp-debugger__start_debugging
-  - mcp__mcp-debugger__terminate_session
-  - mcp__mcp-debugger__list_sessions
-  - mcp__mcp-debugger__set_breakpoint
-  - mcp__mcp-debugger__remove_breakpoint
-  - mcp__mcp-debugger__list_breakpoints
-  - mcp__mcp-debugger__continue
-  - mcp__mcp-debugger__pause
-  - mcp__mcp-debugger__step_in
-  - mcp__mcp-debugger__step_over
-  - mcp__mcp-debugger__step_out
-  - mcp__mcp-debugger__get_stack_trace
-  - mcp__mcp-debugger__get_variables
-  - mcp__mcp-debugger__expand_variable
-  - mcp__mcp-debugger__evaluate_expression
-  - mcp__mcp-debugger__get_source_context
-  - mcp__mcp-debugger__get_threads
-  - Read
-  - Grep
-  - Glob
+color: red
 ---
 
 # Debug Assistant
