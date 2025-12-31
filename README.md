@@ -1,8 +1,8 @@
 # MCP Debugger
 
-**A Claude Code plugin that lets coding agents pause running programs, step through execution, and inspect expanded local variables via real debuggers — fully autonomous, no log statements required.**
+**A Claude Code plugin that enables fully autonomous debugging — coding agents pause programs, step through execution, inspect locals, and compare expected vs actual values using real debuggers. No human intervention. No log statements.**
 
-This is a **game changer** for AI-assisted development. Claude decides when to debug, sets breakpoints, and inspects state without modifying your code. It works today.
+This is a **game changer** for AI-assisted development. Claude autonomously investigates bugs by debugging itself, finding discrepancies between expected and actual runtime state. It works today.
 
 ## Why This Exists
 
@@ -24,14 +24,14 @@ No debug logs. No log levels. No reruns. No code edits. Claude pauses your runni
 
 ## What Makes This Different
 
-- ✓ **Agent-Driven**: Claude decides when to set breakpoints and inspect variables — you just ask questions
+- ✓ **Fully Autonomous**: Claude decides when to debug, sets breakpoints, and investigates without human prompting
 - ✓ **Real DAP Backends**: Uses production debuggers (debugpy, vscode-js-debug, Delve, CodeLLDB), not mocks or interpreters
-- ✓ **Expanded Locals**: Inspects full object trees, not just stack frames
-- ✓ **Multi-Language**: Same debugging mental model across Python, JavaScript/TypeScript, Go, and Rust
+- ✓ **Expanded Locals**: Inspects full object trees, compares expected vs actual values
+- ✓ **Multi-Language**: Same autonomous debugging across Python, JavaScript/TypeScript, Go, and Rust
 
-This isn't "AI explains stack traces" or "print-debugging helpers" — it's **autonomous runtime inspection**.
+This isn't "AI explains stack traces" or "human-directed debugging" — it's **autonomous runtime investigation**.
 
-**This fundamentally changes how agents debug code.**
+**Claude debugs itself. No human intervention required.**
 
 ## Language Support
 
@@ -52,13 +52,13 @@ Claude Code → MCP Protocol → mcp-debugger → DAP → Runtime Debugger
                                               Your Program (paused)
 ```
 
-1. You ask Claude a question about your code's behavior
-2. Claude decides to debug instead of guessing
+1. Claude detects something might be wrong (test failure, unexpected behavior, etc.)
+2. Claude autonomously decides to debug instead of guessing
 3. Breakpoints are set, program runs
-4. Claude inspects locals and stack on-demand
-5. You get answers based on actual runtime state
+4. Claude inspects locals, compares expected vs actual values
+5. Claude identifies the discrepancy and fixes the bug
 
-No user commands required — Claude invokes debugging tools automatically when needed.
+**Fully autonomous** — Claude invokes debugging tools on its own when investigating issues.
 
 ## Installation
 
@@ -68,9 +68,9 @@ In Claude Code:
 2. Add the registry: `bherbruck/mcp-debugger`
 3. Install the `mcp-debugger` plugin
 
-That's it. Claude uses it automatically when debugging would help.
+That's it. Claude autonomously uses it when investigating issues — no commands needed.
 
-**Optional**: Add to your `CLAUDE.md` to make Claude prefer debugging over print statements:
+**Optional**: Add to your `CLAUDE.md` to encourage autonomous debugging over print statements:
 
 ```markdown
 ## Debugging
@@ -83,9 +83,9 @@ Set breakpoints and inspect variables using real debuggers.
 
 ## Concrete Example
 
-**You**: "Why is `process_orders()` returning None sometimes?"
+**Scenario**: A test fails. Expected return value, got None instead.
 
-**Claude** (thinking): *Instead of asking the user to add print statements, I'll set a breakpoint and inspect the actual state.*
+**Claude** (autonomously): *Test failure detected. Instead of guessing or adding logs, I'll debug this to see what's actually happening at runtime.*
 
 ```
 [Claude creates debug session, sets breakpoint at process_orders(), runs code]
@@ -111,17 +111,19 @@ empty result.
 
 The bug is in line 52 — it returns early without a value when
 len(order.items) == 0.
+
+[Claude fixes the bug to return an empty result instead of None]
 ```
 
-**Claude knows this without you adding a single log statement.** It paused execution, expanded the `orders` list, and inspected the invariant break in real time.
+**Claude found and fixed this autonomously.** No log statements added. No human debugging. Just runtime inspection, expected vs actual comparison, and a fix.
 
 ## Who This Is For
 
-- **Autonomous coding agents** that need to debug without human hand-holding
-- **Humans supervising agents** who want Claude to investigate issues independently
-- **Anyone tired of debug logs** and the stop-edit-log-rerun loop
+- **Autonomous coding agents** that need to debug themselves without human intervention
+- **Developers who want agents to investigate and fix bugs independently**
+- **Anyone building with AI agents** who's tired of log-based debugging cycles
 
-This is agent-first debugging. You ask questions, Claude debugs.
+This is agent-first debugging. **Claude investigates, debugs, and fixes autonomously.**
 
 ## Scope & Safety
 
