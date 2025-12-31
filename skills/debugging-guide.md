@@ -189,6 +189,36 @@ children = expand_variable(sessionId, variablesReference)
 2. Terminate stuck sessions with `terminate_session`
 3. Create a fresh session
 
+### Multithreaded/Async App Issues
+Debugging heavily multithreaded apps (tokio, mio, epoll) can be unstable:
+
+**Symptoms:**
+- `Invalid frame reference` errors
+- `sbframe object is not valid`
+- `Invalid thread_id` errors
+- Session dies unexpectedly
+
+**Solutions:**
+1. **Run single-threaded for debugging** (most reliable):
+   ```rust
+   // Temporarily use single-threaded runtime
+   #[tokio::main(flavor = "current_thread")]
+   ```
+   Or set thread count to 1 via config/env var if your app supports it.
+
+2. **Set breakpoints in sync code** - not hot async handlers
+
+3. **Always call `get_stack_trace` first** - before `get_variables` or `evaluate_expression`
+
+4. **Add a debug sleep** in the handler to stabilize:
+   ```rust
+   std::thread::sleep(std::time::Duration::from_millis(100));
+   ```
+
+5. **Use conditional breakpoints** to reduce how often breakpoints fire
+
+This is a limitation of debugging async/threaded code, not specific to mcp-debugger.
+
 ## Best Practices
 
 1. **Set Strategic Breakpoints**: Place them just before where you expect issues

@@ -148,12 +148,23 @@ export class SessionManager extends EventEmitter {
       this.updateState(sessionId, SessionState.READY);
     });
 
-    client.on('stopped', (event: DebugProtocol.StoppedEvent) => {
+    client.on('stopped', async (event: DebugProtocol.StoppedEvent) => {
       const session = this.sessions.get(sessionId);
       if (session) {
         session.currentThreadId = event.body.threadId ?? 1;
         session.info.stoppedReason = event.body.reason as StopReason;
         session.info.stoppedThreadId = session.currentThreadId;
+
+        // Auto-fetch stack trace to update currentFrameId (like VSCode does)
+        // This prevents "Invalid frame reference" errors in multithreaded apps
+        try {
+          const frames = await client.stackTrace(session.currentThreadId);
+          if (frames.length > 0) {
+            session.currentFrameId = frames[0].id;
+          }
+        } catch {
+          // Ignore errors - frame will be fetched on next getStackTrace call
+        }
       }
       this.updateState(sessionId, SessionState.PAUSED);
       this.emit(
