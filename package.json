@@ -27,7 +27,7 @@
     "go",
     "rust"
   ],
-  "author": "",
+  "author": "bherbruck",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
