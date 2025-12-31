@@ -197,3 +197,21 @@ children = expand_variable(sessionId, variablesReference)
 4. **Clean Up Sessions**: Always terminate when done
 5. **Read the Stack**: The call stack tells you how you got here
 6. **Compare Expected vs Actual**: The gap reveals the bug
+
+## Debugging Servers and Long-Running Programs
+
+When debugging servers (HTTP, MQTT, WebSocket, etc.) that wait for connections:
+
+1. Start the server under debugger with breakpoints set
+2. **Use Bash to trigger the breakpoint yourself** - don't ask the user to do it
+3. Then check the debugger state
+
+Example for an HTTP server:
+```
+1. start_debugging(sessionId, "/path/to/server")  → server running
+2. Bash("curl http://localhost:8080/api/endpoint")  → triggers breakpoint
+3. get_stack_trace(sessionId)  → now paused at handler
+4. get_variables(sessionId)  → inspect the request
+```
+
+The debugger does NOT block other tools. You can run Bash commands while the program is running.
