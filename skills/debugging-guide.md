@@ -5,6 +5,18 @@ description: Comprehensive guide to using the MCP debugger for debugging Python,
 
 # MCP Debugger Guide
 
+## IMPORTANT: The tools are already available
+
+The MCP debugger tools are ALREADY AVAILABLE to you. Do NOT:
+- Search for .mcp.json files
+- Look in ~/.claude/ for configuration
+- Use Glob/Grep/Search to find "how to use" the debugger
+- Read config files to understand the tools
+
+Just CALL THE TOOLS DIRECTLY. They work. Start with `create_debug_session(language)`.
+
+---
+
 A comprehensive guide to debugging code with the MCP debugger.
 
 ## Quick Start

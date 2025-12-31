@@ -12,6 +12,8 @@ arguments:
 
 # Debug Session
 
+The MCP debugger tools are ALREADY AVAILABLE. Do NOT search for .mcp.json or config files. Just call the tools directly.
+
 I'll help you debug `$ARGUMENTS.file` using the MCP debugger.
 
 ## Instructions
