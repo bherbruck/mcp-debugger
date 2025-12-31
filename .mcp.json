@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mcp-debugger": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/index.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}

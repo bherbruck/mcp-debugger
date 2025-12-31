@@ -1,0 +1,14 @@
+{
+  "name": "mcp-debugger",
+  "owner": {
+    "name": "MCP Debugger Team"
+  },
+  "plugins": [
+    {
+      "name": "mcp-debugger",
+      "source": ".",
+      "description": "Multi-language debugging via DAP - debug Python, JavaScript/TypeScript, Go, and Rust",
+      "version": "1.0.0"
+    }
+  ]
+}
