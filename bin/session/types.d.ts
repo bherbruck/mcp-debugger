@@ -93,6 +93,14 @@ export interface BreakpointInfo {
     logMessage?: string;
     /** Additional message from adapter */
     message?: string;
+    /** If set, dump variables to this file (optional, traces always stored in session) */
+    dumpFile?: string;
+    /** Enable tracepoint mode: collect variables and auto-continue */
+    trace?: boolean;
+    /** Max number of traces before stopping at this breakpoint (default: unlimited) */
+    maxDumps?: number;
+    /** Current dump count (internal tracking) */
+    dumpCount?: number;
 }
 /**
  * Request to set a breakpoint
@@ -103,6 +111,12 @@ export interface SetBreakpointRequest {
     condition?: string;
     hitCondition?: string;
     logMessage?: string;
+    /** If set, also dump variables to this file (traces always stored in session) */
+    dumpFile?: string;
+    /** Enable tracepoint mode: collect variables and auto-continue */
+    trace?: boolean;
+    /** Max number of traces before stopping at this breakpoint (default: unlimited) */
+    maxDumps?: number;
 }
 /**
  * Stack frame information

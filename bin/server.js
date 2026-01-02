@@ -98,7 +98,7 @@ const tools = [
     // Breakpoints
     {
         name: 'set_breakpoint',
-        description: 'Set a breakpoint at a specific line in a source file',
+        description: 'Set a breakpoint at a specific line in a source file. Use dumpFile to create a tracepoint that dumps variables to a file and auto-continues.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -121,9 +121,69 @@ const tools = [
                 hitCondition: {
                     type: 'string',
                     description: 'Optional hit count condition (e.g., ">5", "==10")'
+                },
+                trace: {
+                    type: 'boolean',
+                    description: 'Enable tracepoint mode: collect variables to session state and auto-continue'
+                },
+                dumpFile: {
+                    type: 'string',
+                    description: 'Also dump variables to this file (JSONL format). Implies trace=true.'
+                },
+                maxDumps: {
+                    type: 'number',
+                    description: 'Max number of traces before stopping at this breakpoint. Default: unlimited.'
                 }
             },
             required: ['sessionId', 'file', 'line']
+        }
+    },
+    {
+        name: 'get_traces',
+        description: 'Get collected traces from tracepoints. Traces are stored in session state and can be queried with filtering and pagination.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sessionId: {
+                    type: 'string',
+                    description: 'Debug session ID'
+                },
+                file: {
+                    type: 'string',
+                    description: 'Filter by file path (partial match supported)'
+                },
+                line: {
+                    type: 'number',
+                    description: 'Filter by line number'
+                },
+                function: {
+                    type: 'string',
+                    description: 'Filter by function name (partial match)'
+                },
+                limit: {
+                    type: 'number',
+                    description: 'Max number of traces to return (default: 100)'
+                },
+                offset: {
+                    type: 'number',
+                    description: 'Number of traces to skip (for pagination)'
+                }
+            },
+            required: ['sessionId']
+        }
+    },
+    {
+        name: 'clear_traces',
+        description: 'Clear all collected traces from the session',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sessionId: {
+                    type: 'string',
+                    description: 'Debug session ID'
+                }
+            },
+            required: ['sessionId']
         }
     },
     {
@@ -165,7 +225,7 @@ const tools = [
     // Execution Control
     {
         name: 'continue',
-        description: 'Continue execution until the next breakpoint or program end. Use waitForBreakpoint to block until a breakpoint is hit and return variables.',
+        description: 'Continue execution until the next breakpoint or program end. Use waitForBreakpoint to block until a breakpoint is hit and return variables. Use collectHits to run through multiple breakpoint hits, collecting variables at each, then return all traces.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -184,6 +244,10 @@ const tools = [
                 timeout: {
                     type: 'number',
                     description: 'Timeout in ms when waiting for breakpoint (default: 30000)'
+                },
+                collectHits: {
+                    type: 'number',
+                    description: 'Collect this many breakpoint hits before returning. At each hit, variables are captured and execution auto-continues. Returns all traces when done.'
                 }
             },
             required: ['sessionId']
@@ -256,6 +320,37 @@ const tools = [
                 threadId: {
                     type: 'number',
                     description: 'Optional thread ID'
+                }
+            },
+            required: ['sessionId']
+        }
+    },
+    {
+        name: 'step_and_trace',
+        description: 'Step through code N times, collecting variables at each step. Returns all traces or writes to a file. Useful for tracing execution flow.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                sessionId: {
+                    type: 'string',
+                    description: 'Debug session ID'
+                },
+                count: {
+                    type: 'number',
+                    description: 'Number of steps to take (default: 100)'
+                },
+                timeout: {
+                    type: 'number',
+                    description: 'Maximum time in ms (default: 30000)'
+                },
+                stepType: {
+                    type: 'string',
+                    enum: ['in', 'over', 'out'],
+                    description: 'Type of step: in (step into functions), over (step over), out (step out). Default: over'
+                },
+                dumpFile: {
+                    type: 'string',
+                    description: 'If set, write traces to this file (JSONL format) instead of returning in response'
                 }
             },
             required: ['sessionId']
@@ -494,12 +589,31 @@ async function handleToolCall(name, args) {
             const line = args.line;
             const condition = args.condition;
             const hitCondition = args.hitCondition;
+            const trace = args.trace;
+            const dumpFile = args.dumpFile;
+            const maxDumps = args.maxDumps;
             return sessionManager.setBreakpoint(sessionId, {
                 file,
                 line,
                 condition,
-                hitCondition
+                hitCondition,
+                trace,
+                dumpFile,
+                maxDumps
             });
+        }
+        case 'get_traces': {
+            const sessionId = args.sessionId;
+            const file = args.file;
+            const line = args.line;
+            const func = args.function;
+            const limit = args.limit;
+            const offset = args.offset;
+            return sessionManager.getTraces(sessionId, { file, line, function: func, limit, offset });
+        }
+        case 'clear_traces': {
+            const sessionId = args.sessionId;
+            return sessionManager.clearTraces(sessionId);
         }
         case 'remove_breakpoint': {
             const sessionId = args.sessionId;
@@ -518,7 +632,8 @@ async function handleToolCall(name, args) {
             const threadId = args.threadId;
             const waitForBreakpoint = args.waitForBreakpoint;
             const timeout = args.timeout;
-            return sessionManager.continue(sessionId, threadId, { waitForBreakpoint, timeout });
+            const collectHits = args.collectHits;
+            return sessionManager.continue(sessionId, threadId, { waitForBreakpoint, timeout, collectHits });
         }
         case 'pause': {
             const sessionId = args.sessionId;
@@ -539,6 +654,14 @@ async function handleToolCall(name, args) {
             const sessionId = args.sessionId;
             const threadId = args.threadId;
             return sessionManager.stepOut(sessionId, threadId);
+        }
+        case 'step_and_trace': {
+            const sessionId = args.sessionId;
+            const count = args.count;
+            const timeout = args.timeout;
+            const stepType = args.stepType;
+            const dumpFile = args.dumpFile;
+            return sessionManager.stepAndTrace(sessionId, { count, timeout, stepType, dumpFile });
         }
         // Inspection
         case 'get_stack_trace': {

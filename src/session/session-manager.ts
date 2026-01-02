@@ -31,6 +31,23 @@ import {
 import { DapClient } from '../dap/dap-client.js';
 import { adapterRegistry, IDebugAdapter } from '../adapters/index.js';
 
+// Max traces to keep in memory per session (prevent OOM)
+const MAX_TRACES_IN_MEMORY = 10000;
+// Max variables per trace (prevent individual traces from being too large)
+const MAX_VARIABLES_PER_TRACE = 100;
+
+/**
+ * Trace point - captured state at a breakpoint hit
+ */
+export interface TracePoint {
+  hitNumber: number;
+  timestamp: number;
+  file: string;
+  line: number;
+  function?: string;
+  variables: Variable[];
+}
+
 /**
  * Internal session data
  */
@@ -47,6 +64,10 @@ interface SessionData {
     stackFrame: StackFrame;
     variables: Variable[];
   };
+  // Collected traces when using collectHits mode
+  collectedTraces: TracePoint[];
+  // Map of "file:line" -> dumpFile for tracepoint breakpoints
+  dumpBreakpoints: Map<string, string>;
 }
 
 /**
@@ -133,7 +154,9 @@ export class SessionManager extends EventEmitter {
       executablePath: resolvedPath,
       breakpoints: new Map(),
       currentThreadId: 1,
-      currentFrameId: 0
+      currentFrameId: 0,
+      collectedTraces: [],
+      dumpBreakpoints: new Map()
     };
 
     this.sessions.set(sessionId, sessionData);
@@ -162,10 +185,14 @@ export class SessionManager extends EventEmitter {
 
         // Auto-fetch stack trace and variables (like VSCode does on stop)
         // This prevents "Invalid frame reference" errors and caches context
+        let currentFile = '';
+        let currentLine = 0;
         try {
           const frames = await client.stackTrace(session.currentThreadId);
           if (frames.length > 0) {
             session.currentFrameId = frames[0].id;
+            currentFile = frames[0].file;
+            currentLine = frames[0].line;
 
             // Also fetch local variables for the top frame
             const scopes = await client.scopes(frames[0].id);
@@ -180,6 +207,66 @@ export class SessionManager extends EventEmitter {
               stackFrame: frames[0],
               variables
             };
+
+            // Check if this is a tracepoint (trace=true or dumpFile set)
+            const bpKey = `${currentFile}:${currentLine}`;
+            const isTracepoint = session.dumpBreakpoints.has(bpKey);
+            if (isTracepoint) {
+              const dumpFile = session.dumpBreakpoints.get(bpKey);
+
+              // Find the breakpoint to check maxDumps
+              const fileBreakpoints = session.breakpoints.get(currentFile);
+              const bp = fileBreakpoints?.find(b => b.line === currentLine);
+
+              // Increment dump count
+              if (bp) {
+                bp.dumpCount = (bp.dumpCount ?? 0) + 1;
+              }
+
+              // Check if we've exceeded maxDumps
+              const maxDumps = bp?.maxDumps;
+              const dumpCount = bp?.dumpCount ?? 1;
+              const shouldContinue = !maxDumps || dumpCount < maxDumps;
+
+              // Collect trace (limit variables to prevent large traces)
+              const limitedVariables = variables.slice(0, MAX_VARIABLES_PER_TRACE);
+              const trace: TracePoint = {
+                hitNumber: dumpCount,
+                timestamp: Date.now(),
+                file: currentFile,
+                line: currentLine,
+                function: frames[0].name,
+                variables: limitedVariables
+              };
+
+              // Store in session state (drop oldest if at limit)
+              if (session.collectedTraces.length >= MAX_TRACES_IN_MEMORY) {
+                session.collectedTraces.shift(); // Remove oldest
+              }
+              session.collectedTraces.push(trace);
+
+              // Optionally also write to file if dumpFile is set (non-empty)
+              if (dumpFile) {
+                try {
+                  await fs.appendFile(dumpFile, JSON.stringify(trace) + '\n');
+                } catch (err) {
+                  console.error(`Failed to write to dump file ${dumpFile}:`, err);
+                }
+              }
+
+              // Auto-continue if we haven't reached maxDumps
+              if (shouldContinue) {
+                setImmediate(async () => {
+                  try {
+                    await client.continue(session.currentThreadId);
+                  } catch {
+                    // Program may have terminated
+                  }
+                });
+                return; // Don't emit stopped event for dump breakpoints
+              }
+              // If maxDumps reached, fall through to normal stopped behavior
+            }
           }
         } catch {
           // Ignore errors - will be fetched on next get* call
@@ -356,7 +443,7 @@ export class SessionManager extends EventEmitter {
     request: SetBreakpointRequest
   ): Promise<{ success: boolean; breakpoint?: BreakpointInfo; message?: string }> {
     const session = this.getSession(sessionId);
-    const { file, line, condition, hitCondition, logMessage } = request;
+    const { file, line, condition, hitCondition, logMessage, dumpFile, trace, maxDumps } = request;
 
     // Normalize file path
     const normalizedFile = path.resolve(file);
@@ -372,7 +459,11 @@ export class SessionManager extends EventEmitter {
         ...existingBreakpoints[existingIndex],
         condition,
         hitCondition,
-        logMessage
+        logMessage,
+        dumpFile,
+        trace,
+        maxDumps,
+        dumpCount: 0 // Reset count on update
       };
     } else {
       // Add new breakpoint
@@ -383,11 +474,24 @@ export class SessionManager extends EventEmitter {
         verified: false,
         condition,
         hitCondition,
-        logMessage
+        logMessage,
+        dumpFile,
+        trace,
+        maxDumps,
+        dumpCount: 0
       });
     }
 
     session.breakpoints.set(normalizedFile, existingBreakpoints);
+
+    // Register tracepoint for auto-continue behavior
+    const bpKey = `${normalizedFile}:${line}`;
+    if (trace || dumpFile) {
+      // Store dumpFile path (or empty string if just tracing internally)
+      session.dumpBreakpoints.set(bpKey, dumpFile ?? '');
+    } else {
+      session.dumpBreakpoints.delete(bpKey);
+    }
 
     // If session is active, send to adapter
     if (
@@ -491,25 +595,125 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
+   * Get collected traces with optional filtering
+   */
+  getTraces(
+    sessionId: string,
+    options?: {
+      file?: string;
+      line?: number;
+      function?: string;
+      limit?: number;
+      offset?: number;
+    }
+  ): { traces: TracePoint[]; total: number } {
+    const session = this.getSession(sessionId);
+    let traces = session.collectedTraces;
+
+    // Apply filters
+    if (options?.file) {
+      const fileFilter = options.file;
+      traces = traces.filter(t => t.file === fileFilter || t.file.endsWith(fileFilter));
+    }
+    if (options?.line) {
+      const lineFilter = options.line;
+      traces = traces.filter(t => t.line === lineFilter);
+    }
+    if (options?.function) {
+      const funcFilter = options.function;
+      traces = traces.filter(t => t.function?.includes(funcFilter));
+    }
+
+    const total = traces.length;
+
+    // Apply pagination
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? 100;
+    traces = traces.slice(offset, offset + limit);
+
+    return { traces, total };
+  }
+
+  /**
+   * Clear collected traces
+   */
+  clearTraces(sessionId: string): { cleared: number } {
+    const session = this.getSession(sessionId);
+    const cleared = session.collectedTraces.length;
+    session.collectedTraces = [];
+    return { cleared };
+  }
+
+  /**
    * Continue execution
+   * @param collectHits - If set, collect this many breakpoint hits before returning (auto-continues at each hit)
    */
   async continue(
     sessionId: string,
     threadId?: number,
-    options?: { waitForBreakpoint?: boolean; timeout?: number }
+    options?: { waitForBreakpoint?: boolean; timeout?: number; collectHits?: number }
   ): Promise<{
     success: boolean;
     state: SessionState;
     message: string;
     stoppedAt?: StackFrame;
     variables?: Variable[];
+    traces?: TracePoint[];
   }> {
     const session = this.getSession(sessionId);
     const tid = threadId ?? session.currentThreadId;
     const waitForBreakpoint = options?.waitForBreakpoint ?? false;
     const timeout = options?.timeout ?? 30000; // 30s default
+    const collectHits = options?.collectHits;
 
     try {
+      // Multi-hit collection mode: continue and collect N breakpoint hits
+      if (collectHits && collectHits > 0) {
+        session.collectedTraces = []; // Clear previous traces
+        const startTime = Date.now();
+        let hitCount = 0;
+
+        while (hitCount < collectHits) {
+          // Check timeout
+          if (Date.now() - startTime > timeout) {
+            break;
+          }
+
+          await session.client.continue(tid);
+
+          // Wait for pause with remaining timeout
+          const remainingTimeout = Math.max(1000, timeout - (Date.now() - startTime));
+          await this.waitForPause(sessionId, remainingTimeout);
+
+          // Check if we actually paused (program might have terminated)
+          if (session.info.state !== SessionState.PAUSED) {
+            break;
+          }
+
+          // Collect trace point
+          hitCount++;
+          const frame = session.lastStopContext?.stackFrame;
+          if (frame) {
+            session.collectedTraces.push({
+              hitNumber: hitCount,
+              timestamp: Date.now(),
+              file: frame.file,
+              line: frame.line,
+              function: frame.name,
+              variables: session.lastStopContext?.variables ?? []
+            });
+          }
+        }
+
+        return {
+          success: true,
+          state: session.info.state,
+          message: `Collected ${hitCount} breakpoint hit(s)`,
+          traces: session.collectedTraces
+        };
+      }
+
+      // Standard continue
       await session.client.continue(tid);
 
       if (waitForBreakpoint) {
@@ -677,6 +881,115 @@ export class SessionManager extends EventEmitter {
       return {
         success: false,
         state: session.info.state
+      };
+    }
+  }
+
+  /**
+   * Step and trace - step N times, collecting variables at each step
+   * Can write to file (dumpFile) or return in response (traces)
+   */
+  async stepAndTrace(
+    sessionId: string,
+    options: {
+      count?: number;
+      timeout?: number;
+      stepType?: 'in' | 'over' | 'out';
+      dumpFile?: string;
+    }
+  ): Promise<{
+    success: boolean;
+    state: SessionState;
+    message: string;
+    traces?: TracePoint[];
+    stepsCompleted: number;
+  }> {
+    const session = this.getSession(sessionId);
+    const count = options.count ?? 100;
+    const timeout = options.timeout ?? 30000;
+    const stepType = options.stepType ?? 'over';
+    const dumpFile = options.dumpFile;
+
+    const traces: TracePoint[] = [];
+    const startTime = Date.now();
+    let stepsCompleted = 0;
+
+    try {
+      while (stepsCompleted < count) {
+        // Check timeout
+        if (Date.now() - startTime > timeout) {
+          break;
+        }
+
+        // Check if we're still paused (program might have terminated)
+        if (session.info.state !== SessionState.PAUSED) {
+          break;
+        }
+
+        // Collect current state before stepping
+        const frame = session.lastStopContext?.stackFrame;
+        const variables = session.lastStopContext?.variables ?? [];
+        const limitedVariables = variables.slice(0, MAX_VARIABLES_PER_TRACE);
+
+        if (frame) {
+          const trace: TracePoint = {
+            hitNumber: stepsCompleted + 1,
+            timestamp: Date.now(),
+            file: frame.file,
+            line: frame.line,
+            function: frame.name,
+            variables: limitedVariables
+          };
+
+          if (dumpFile) {
+            // Write to file
+            await fs.appendFile(dumpFile, JSON.stringify(trace) + '\n');
+          } else {
+            // Collect in memory (limit total traces)
+            if (traces.length >= MAX_TRACES_IN_MEMORY) {
+              traces.shift();
+            }
+            traces.push(trace);
+          }
+        }
+
+        stepsCompleted++;
+
+        // Step
+        switch (stepType) {
+          case 'in':
+            await session.client.stepIn(session.currentThreadId);
+            break;
+          case 'out':
+            await session.client.stepOut(session.currentThreadId);
+            break;
+          case 'over':
+          default:
+            await session.client.next(session.currentThreadId);
+            break;
+        }
+
+        // Wait for pause with short timeout per step
+        const remainingTimeout = Math.max(1000, timeout - (Date.now() - startTime));
+        await this.waitForPause(sessionId, Math.min(5000, remainingTimeout));
+      }
+
+      return {
+        success: true,
+        state: session.info.state,
+        message: dumpFile
+          ? `Traced ${stepsCompleted} step(s) to ${dumpFile}`
+          : `Traced ${stepsCompleted} step(s)`,
+        traces: dumpFile ? undefined : traces,
+        stepsCompleted
+      };
+    } catch (error) {
+      return {
+        success: false,
+        state: session.info.state,
+        message: `Step and trace failed: ${error}`,
+        traces: dumpFile ? undefined : traces,
+        stepsCompleted
       };
     }
   }

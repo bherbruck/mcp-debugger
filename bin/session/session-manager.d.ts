@@ -7,6 +7,17 @@
 import { EventEmitter } from 'events';
 import { SessionState, DebugSessionInfo, SessionCreateParams, LaunchParams, BreakpointInfo, SetBreakpointRequest, StackFrame, Variable, Scope, ThreadInfo, EvaluationResult, SourceContext, StopReason, DebugOutput } from './types.js';
 /**
+ * Trace point - captured state at a breakpoint hit
+ */
+export interface TracePoint {
+    hitNumber: number;
+    timestamp: number;
+    file: string;
+    line: number;
+    function?: string;
+    variables: Variable[];
+}
+/**
  * Events emitted by the session manager
  */
 export interface SessionManagerEvents {
@@ -68,17 +79,39 @@ export declare class SessionManager extends EventEmitter {
      */
     listBreakpoints(sessionId: string): BreakpointInfo[];
     /**
+     * Get collected traces with optional filtering
+     */
+    getTraces(sessionId: string, options?: {
+        file?: string;
+        line?: number;
+        function?: string;
+        limit?: number;
+        offset?: number;
+    }): {
+        traces: TracePoint[];
+        total: number;
+    };
+    /**
+     * Clear collected traces
+     */
+    clearTraces(sessionId: string): {
+        cleared: number;
+    };
+    /**
      * Continue execution
+     * @param collectHits - If set, collect this many breakpoint hits before returning (auto-continues at each hit)
      */
     continue(sessionId: string, threadId?: number, options?: {
         waitForBreakpoint?: boolean;
         timeout?: number;
+        collectHits?: number;
     }): Promise<{
         success: boolean;
         state: SessionState;
         message: string;
         stoppedAt?: StackFrame;
         variables?: Variable[];
+        traces?: TracePoint[];
     }>;
     /**
      * Pause execution
@@ -118,6 +151,22 @@ export declare class SessionManager extends EventEmitter {
         state: SessionState;
         stoppedAt?: StackFrame;
         variables?: Variable[];
+    }>;
+    /**
+     * Step and trace - step N times, collecting variables at each step
+     * Can write to file (dumpFile) or return in response (traces)
+     */
+    stepAndTrace(sessionId: string, options: {
+        count?: number;
+        timeout?: number;
+        stepType?: 'in' | 'over' | 'out';
+        dumpFile?: string;
+    }): Promise<{
+        success: boolean;
+        state: SessionState;
+        message: string;
+        traces?: TracePoint[];
+        stepsCompleted: number;
     }>;
     /**
      * Get stack trace
